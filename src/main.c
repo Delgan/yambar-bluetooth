@@ -1,5 +1,7 @@
+#include <getopt.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
@@ -757,11 +759,94 @@ finish:
     return ret;
 }
 
-int main()
+static void print_help(const char *program_name)
 {
-    monitoring_config config;
-    config.adapter_object_path = "/org/bluez/hci0";
-    config.device_mac_address = NULL;
+    printf("Usage: %s [options]\n", program_name);
+    printf("Options:\n");
+    printf("  -n, --adapter-name <name>      Set the Bluetooth adapter name to observe (by default it uses 'hci0')\n");
+    printf("  -d, --device-address <address> Set the mac address for a specific device to observe (by default it uses the first one connected)\n");
+    printf("  -h, --help                     Display this help message\n");
+}
 
-    return run_bluetooth_monitoring(&config);
+static int parse_command_line_arguments(int argc, char *argv[], monitoring_config *output)
+{
+    int opt = 0;
+    char *adapter_name = NULL;
+    char *device_address = NULL;
+
+    struct option long_options[] = {
+        {"adapter-name", required_argument, NULL, 'n'},
+        {"device-address", required_argument, NULL, 'd'},
+        {"help", no_argument, NULL, 'h'},
+        {NULL, 0, NULL, 0}};
+
+    while ((opt = getopt_long(argc, argv, "n:d:h", long_options, NULL)) != -1)
+    {
+        switch (opt)
+        {
+        case 'n':
+            adapter_name = optarg;
+            break;
+        case 'd':
+            device_address = optarg;
+            break;
+        case 'h':
+            print_help(argv[0]);
+            return 1;
+        case ':':
+            fprintf(stderr, "Option --%s requires an argument.\n", long_options[optind - 1].name);
+            return -1;
+        case '?':
+            fprintf(stderr, "Unknown option: %s\n", argv[optind - 1]);
+            return -1;
+        }
+    }
+
+    if (adapter_name != NULL)
+    {
+        const char *prefix = "/org/bluez/";
+        char *result = malloc(strlen(prefix) + strlen(adapter_name) + 1);
+        strcpy(result, prefix);
+        strcat(result, adapter_name);
+        output->adapter_object_path = result;
+    }
+    else
+    {
+        output->adapter_object_path = "/org/bluez/hci0";
+    }
+
+    if (device_address != NULL)
+    {
+        output->device_mac_address = device_address;
+    }
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    int ret = 0;
+
+    monitoring_config config;
+    config.adapter_object_path = NULL;
+    config.device_mac_address = NULL;
+    ret = parse_command_line_arguments(argc, argv, &config);
+    if (ret > 0)
+    {
+        return 0;
+    }
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to parse command line arguments\n");
+        return ret;
+    }
+
+    ret = run_bluetooth_monitoring(&config);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to run bluetooth monitoring\n");
+        return ret;
+    }
+
+    return 0;
 }
