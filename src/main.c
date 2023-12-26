@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #define str_eq(a, b) (strcmp((a), (b)) == 0)
+#define str_eq_i(a, b) (strcasecmp(a, b) == 0)
 
 typedef struct
 {
@@ -322,7 +323,7 @@ static bool is_desired_device(const monitoring_config *config, const device_info
 
     if (config->device_mac_address != NULL)
     {
-        return device->address != NULL && str_eq(device->address, config->device_mac_address);
+        return device->address != NULL && str_eq_i(device->address, config->device_mac_address);
     }
 
     return device->connected;
