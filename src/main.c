@@ -25,13 +25,13 @@ struct device_info
     const char *icon;
 };
 
-void init_adapter_info(struct adapter_info *adapter)
+static void init_adapter_info(struct adapter_info *adapter)
 {
     adapter->powered = false;
     adapter->discovering = false;
 }
 
-void init_device_info(struct device_info *device)
+static void init_device_info(struct device_info *device)
 {
     device->connected = false;
     device->mac = "";
@@ -39,7 +39,7 @@ void init_device_info(struct device_info *device)
     device->icon = "";
 }
 
-int read_boolean_variant(sd_bus_message *reply, bool *value)
+static int read_boolean_variant(sd_bus_message *reply, bool *value)
 {
     int ret = 0;
 
@@ -69,7 +69,7 @@ int read_boolean_variant(sd_bus_message *reply, bool *value)
     return 0;
 }
 
-int read_object_path_variant(sd_bus_message *reply, const char **value)
+static int read_object_path_variant(sd_bus_message *reply, const char **value)
 {
     int ret = 0;
 
@@ -97,7 +97,7 @@ int read_object_path_variant(sd_bus_message *reply, const char **value)
     return 0;
 }
 
-int read_string_variant(sd_bus_message *reply, const char **value)
+static int read_string_variant(sd_bus_message *reply, const char **value)
 {
     int ret = 0;
 
@@ -125,7 +125,7 @@ int read_string_variant(sd_bus_message *reply, const char **value)
     return 0;
 }
 
-int parse_adapter_properties(sd_bus *bus, sd_bus_message *reply, struct adapter_info *output)
+static int parse_adapter_properties(sd_bus_message *reply, struct adapter_info *output)
 {
     int ret = 0;
 
@@ -203,7 +203,7 @@ int parse_adapter_properties(sd_bus *bus, sd_bus_message *reply, struct adapter_
     return 0;
 }
 
-int parse_device_properties(sd_bus *bus, sd_bus_message *reply, struct device_info *output)
+static int parse_device_properties(sd_bus_message *reply, struct device_info *output)
 {
     int ret = 0;
 
@@ -299,7 +299,7 @@ int parse_device_properties(sd_bus *bus, sd_bus_message *reply, struct device_in
     return 0;
 }
 
-int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
+static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
 {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message *reply = NULL;
@@ -383,7 +383,7 @@ int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
             {
                 struct adapter_info adapter;
                 init_adapter_info(&adapter);
-                ret = parse_adapter_properties(bus, reply, &adapter);
+                ret = parse_adapter_properties(reply, &adapter);
                 if (ret < 0)
                 {
                     fprintf(stderr, "Failed to parse adapter properties\n");
@@ -396,7 +396,7 @@ int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
             {
                 struct device_info device;
                 init_device_info(&device);
-                ret = parse_device_properties(bus, reply, &device);
+                ret = parse_device_properties(reply, &device);
                 if (ret < 0)
                 {
                     fprintf(stderr, "Failed to parse device properties\n");
@@ -456,12 +456,189 @@ int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
     fprintf(stdout, "name|string|%s\n", device_info.name);
     fprintf(stdout, "icon|string|%s\n", device_info.icon);
     fprintf(stdout, "\n");
+    fflush(stdout);
 
 finish:
     sd_bus_error_free(&error);
     sd_bus_message_unref(reply);
 
     return ret;
+}
+
+static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_bus_error *ret_error)
+{
+    (void)ret_error;
+
+    sd_bus *bus = sd_bus_message_get_bus(reply);
+
+    int ret = 0;
+
+    const char *interface;
+    ret = sd_bus_message_read(reply, "s", &interface);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to read interface name\n");
+        return ret;
+    }
+
+    if (!str_eq(interface, "org.bluez.Device1"))
+    {
+        return 0;
+    }
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter properties changed array\n");
+        return ret;
+    }
+
+    bool refresh = false;
+
+    for (;;)
+    {
+        ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv");
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to enter dict entry of device properties changed\n");
+            return ret;
+        }
+        if (ret == 0)
+        {
+            break;
+        }
+
+        const char *property;
+        ret = sd_bus_message_read(reply, "s", &property);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to read device property name\n");
+            return ret;
+        }
+
+        fprintf(stderr, "Property changed: %s\n", property);
+
+        if (str_eq(property, "Connected"))
+        {
+            refresh = true;
+        }
+
+        ret = sd_bus_message_skip(reply, "v");
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to skip variant\n");
+            return ret;
+        }
+
+        ret = sd_bus_message_exit_container(reply);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to exit dict entry of device property\n");
+            return ret;
+        }
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit properties changed array\n");
+        return ret;
+    }
+
+    if (!refresh)
+    {
+        return 0;
+    }
+
+    return fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+}
+
+static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd_bus_error *ret_error)
+{
+    (void)ret_error;
+
+    sd_bus *bus = sd_bus_message_get_bus(reply);
+
+    int ret = 0;
+
+    const char *interface;
+    ret = sd_bus_message_read(reply, "s", &interface);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to read interface name\n");
+        return ret;
+    }
+
+    if (!str_eq(interface, "org.bluez.Adapter1"))
+    {
+        return 0;
+    }
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter properties changed array\n");
+        return ret;
+    }
+
+    bool refresh = false;
+
+    for (;;)
+    {
+        ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv");
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to enter dict entry of device properties changed\n");
+            return ret;
+        }
+        if (ret == 0)
+        {
+            break;
+        }
+
+        const char *property;
+        ret = sd_bus_message_read(reply, "s", &property);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to read device property name\n");
+            return ret;
+        }
+
+        fprintf(stderr, "Property changed: %s\n", property);
+
+        if (str_eq(property, "Powered") || str_eq(property, "Discovering"))
+        {
+            refresh = true;
+        }
+
+        ret = sd_bus_message_skip(reply, "v");
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to skip variant\n");
+            return ret;
+        }
+
+        ret = sd_bus_message_exit_container(reply);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to exit dict entry of device property\n");
+            return ret;
+        }
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit properties changed array\n");
+        return ret;
+    }
+
+    if (!refresh)
+    {
+        return 0;
+    }
+
+    return fetch_bluetooth_state(bus, (struct monitoring_config *)config);
 }
 
 int main()
@@ -481,6 +658,53 @@ int main()
     }
 
     ret = fetch_bluetooth_state(bus, &config);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to fetch bluetooth state\n");
+        goto finish;
+    }
+
+    ret = sd_bus_add_match(bus,
+                           NULL,
+                           "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',arg0namespace='org.bluez.Device1'",
+                           on_device_properties_changed,
+                           &config);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to add match for device properties changed\n");
+        goto finish;
+    }
+
+    ret = sd_bus_add_match(bus,
+                           NULL,
+                           "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',arg0namespace='org.bluez.Adapter1'",
+                           on_adapter_properties_changed,
+                           &config);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to add match for adapter properties changed\n");
+        goto finish;
+    }
+
+    while (true)
+    {
+        ret = sd_bus_process(bus, NULL);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to process bus\n");
+            goto finish;
+        }
+        if (ret > 0)
+        {
+            continue;
+        }
+        ret = sd_bus_wait(bus, UINT64_MAX);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to wait on bus\n");
+            goto finish;
+        }
+    }
 
 finish:
     if (ret < 0)
