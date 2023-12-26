@@ -1,38 +1,332 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <systemd/sd-bus.h>
 
-#define streq(a, b) (strcmp((a), (b)) == 0)
+#define str_eq(a, b) (strcmp((a), (b)) == 0)
 
-int main()
+struct monitoring_params
 {
-    sd_bus *bus = NULL;
+    const char *adapter_object_path; // D-Bus path of the adapter. Can't be NULL.
+    const char *device_mac_address;  // MAC address of the device. If NULL, all devices are monitored.
+};
+
+struct adapter_info
+{
+    bool powered;
+    bool discovering;
+};
+
+struct device_info
+{
+    bool connected;
+    const char *mac;
+    const char *name;
+    const char *icon;
+};
+
+void init_adapter_info(struct adapter_info *adapter)
+{
+    adapter->powered = false;
+    adapter->discovering = false;
+}
+
+void init_device_info(struct device_info *device)
+{
+    device->connected = false;
+    device->mac = "";
+    device->name = "";
+    device->icon = "";
+}
+
+int read_boolean_variant(sd_bus_message *reply, bool *value)
+{
+    int ret = 0;
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "b");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter boolean variant container");
+        return ret;
+    }
+
+    int intValue; // Documentation requires 'int' and not 'bool'.
+    ret = sd_bus_message_read(reply, "b", &intValue);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to read boolean variant\n");
+        return ret;
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit boolean variant container");
+        return ret;
+    }
+
+    *value = intValue;
+    return 0;
+}
+
+int read_object_path_variant(sd_bus_message *reply, const char **value)
+{
+    int ret = 0;
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "o");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter object path variant container");
+        return ret;
+    }
+
+    ret = sd_bus_message_read(reply, "o", value);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to read object path variant\n");
+        return ret;
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit object path variant container");
+        return ret;
+    }
+
+    return 0;
+}
+
+int read_string_variant(sd_bus_message *reply, const char **value)
+{
+    int ret = 0;
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "s");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter string variant container");
+        return ret;
+    }
+
+    ret = sd_bus_message_read(reply, "s", value);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to read string variant\n");
+        return ret;
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit string variant container");
+        return ret;
+    }
+
+    return 0;
+}
+
+int parse_adapter_properties(sd_bus *bus, sd_bus_message *reply, struct adapter_info *output)
+{
+    int ret = 0;
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter properties array of adapter\n");
+        return ret;
+    }
+
+    for (;;)
+    {
+        ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv");
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to enter dict entry of adapter properties\n");
+            return ret;
+        }
+        if (ret == 0)
+        {
+            break;
+        }
+
+        const char *property;
+        ret = sd_bus_message_read(reply, "s", &property);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to read adapter property name\n");
+            return ret;
+        }
+
+        if (str_eq(property, "Powered"))
+        {
+            ret = read_boolean_variant(reply, &output->powered);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Powered' property\n");
+                return ret;
+            }
+        }
+        else if (str_eq(property, "Discovering"))
+        {
+            ret = read_boolean_variant(reply, &output->discovering);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Discovering' property\n");
+                return ret;
+            }
+        }
+        else
+        {
+            ret = sd_bus_message_skip(reply, "v");
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to skip variant\n");
+                return ret;
+            }
+        }
+
+        ret = sd_bus_message_exit_container(reply);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to exit dict entry of adapter property\n");
+            return ret;
+        }
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit properties array of adapter\n");
+        return ret;
+    }
+
+    return 0;
+}
+
+int parse_device_properties(sd_bus *bus, sd_bus_message *reply, struct device_info *output)
+{
+    int ret = 0;
+
+    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to enter properties array of device\n");
+        return ret;
+    }
+
+    for (;;)
+    {
+        ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv");
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to enter dict entry of device properties\n");
+            return ret;
+        }
+        if (ret == 0)
+        {
+            break;
+        }
+
+        const char *property;
+        ret = sd_bus_message_read(reply, "s", &property);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to read device property name\n");
+            return ret;
+        }
+
+        if (str_eq(property, "Connected"))
+        {
+            ret = read_boolean_variant(reply, &output->connected);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Connected' property\n");
+                return ret;
+            }
+        }
+        else if (str_eq(property, "Name"))
+        {
+            ret = read_string_variant(reply, &output->name);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Name' property\n");
+                return ret;
+            }
+        }
+        else if (str_eq(property, "Icon"))
+        {
+            ret = read_string_variant(reply, &output->icon);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Icon' property\n");
+                return ret;
+            }
+        }
+        else if (str_eq(property, "Address"))
+        {
+            ret = read_string_variant(reply, &output->mac);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Address' property\n");
+                return ret;
+            }
+        }
+        else
+        {
+            ret = sd_bus_message_skip(reply, "v");
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to skip variant\n");
+                return ret;
+            }
+        }
+
+        ret = sd_bus_message_exit_container(reply);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to exit dict entry of adapter property\n");
+            return ret;
+        }
+    }
+
+    ret = sd_bus_message_exit_container(reply);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to exit properties array of adapter\n");
+        return ret;
+    }
+
+    return 0;
+}
+
+int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_params *params)
+{
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message *reply = NULL;
 
     int ret = 0;
 
-    ret = sd_bus_open_system(&bus);
-    if (ret < 0)
-    {
-        fprintf(stderr, "Unable to connect to the system bus: %s\n",
-                strerror(-ret));
-        goto finish;
-    }
+    struct adapter_info adapter_info;
+    bool adapter_found = false;
+    init_adapter_info(&adapter_info);
+
+    struct device_info device_info;
+    bool device_found = false;
+    init_device_info(&device_info);
 
     ret = sd_bus_call_method(bus, "org.bluez", "/",
                              "org.freedesktop.DBus.ObjectManager",
                              "GetManagedObjects", &error, &reply, NULL);
     if (ret < 0)
     {
-        fprintf(stderr, "Failed to call method: %s\n", strerror(-ret));
+        fprintf(stderr, "Failed to call 'ObjectManager' method\n");
         goto finish;
     }
 
     ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{oa{sa{sv}}}");
     if (ret < 0)
     {
-        fprintf(stderr, "Failed to enter array container: %s\n", strerror(-ret));
+        fprintf(stderr, "Failed to enter objects array\n");
         goto finish;
     }
 
@@ -41,7 +335,7 @@ int main()
         ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "oa{sa{sv}}");
         if (ret < 0)
         {
-            fprintf(stderr, "Failed to enter dict container: %s\n", strerror(-ret));
+            fprintf(stderr, "Failed to object dict entry\n");
             goto finish;
         }
         if (ret == 0)
@@ -53,14 +347,14 @@ int main()
         ret = sd_bus_message_read(reply, "o", &path);
         if (ret < 0)
         {
-            fprintf(stderr, "Failed to read object path: %s\n", strerror(-ret));
+            fprintf(stderr, "Failed to read object path\n");
             goto finish;
         }
 
         ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sa{sv}}");
         if (ret < 0)
         {
-            fprintf(stderr, "Failed to enter array container: %s\n", strerror(-ret));
+            fprintf(stderr, "Failed to enter interfaces array\n");
             goto finish;
         }
 
@@ -69,7 +363,7 @@ int main()
             ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sa{sv}");
             if (ret < 0)
             {
-                fprintf(stderr, "Failed to enter dict container: %s\n", strerror(-ret));
+                fprintf(stderr, "Failed to enter interface dict entry\n");
                 goto finish;
             }
             if (ret == 0)
@@ -81,178 +375,45 @@ int main()
             ret = sd_bus_message_read(reply, "s", &interface);
             if (ret < 0)
             {
-                fprintf(stderr, "Failed to read interface: %s\n", strerror(-ret));
+                fprintf(stderr, "Failed to read interface name\n");
                 goto finish;
             }
 
-            ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
-            if (ret < 0)
+            if (!adapter_found && str_eq(interface, "org.bluez.Adapter1") && str_eq(path, params->adapter_object_path))
             {
-                fprintf(stderr, "Failed to enter array container: %s\n", strerror(-ret));
-                goto finish;
+                struct adapter_info adapter;
+                init_adapter_info(&adapter);
+                ret = parse_adapter_properties(bus, reply, &adapter);
+                if (ret < 0)
+                {
+                    fprintf(stderr, "Failed to parse adapter properties\n");
+                    goto finish;
+                }
+                adapter_info = adapter;
+                adapter_found = true;
             }
-
-            for (;;)
+            else if (!device_found && str_eq(interface, "org.bluez.Device1"))
             {
-                ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv");
+                struct device_info device;
+                init_device_info(&device);
+                ret = parse_device_properties(bus, reply, &device);
                 if (ret < 0)
                 {
-                    fprintf(stderr, "Failed to enter dict container: %s\n", strerror(-ret));
+                    fprintf(stderr, "Failed to parse device properties\n");
                     goto finish;
                 }
-                if (ret == 0)
+                if ((params->device_mac_address == NULL && device.connected) || (params->device_mac_address != NULL && str_eq(device.mac, params->device_mac_address)))
                 {
-                    break;
+                    device_info = device;
+                    device_found = true;
                 }
-
-                const char *property;
-                ret = sd_bus_message_read(reply, "s", &property);
+            }
+            else
+            {
+                ret = sd_bus_message_skip(reply, "a{sv}");
                 if (ret < 0)
                 {
-                    fprintf(stderr, "Failed to read property: %s\n", strerror(-ret));
-                    goto finish;
-                }
-
-                const char *contents;
-                ret = sd_bus_message_peek_type(reply, NULL, &contents);
-                if (ret < 0)
-                {
-                    fprintf(stderr, "Failed to peek type: %s\n", strerror(-ret));
-                    goto finish;
-                }
-
-                if (streq(contents, "t") || streq(contents, "s") || streq(contents, "n") || streq(contents, "q") || streq(contents, "i") || streq(contents, "u") || streq(contents, "b") || streq(contents, "o") || streq(contents, "y"))
-                {
-                    ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, contents);
-                    if (ret < 0)
-                    {
-                        fprintf(stderr, "Failed to enter variant container: %s\n", strerror(-ret));
-                        goto finish;
-                    }
-
-                    if (streq(contents, "t"))
-                    {
-                        uint64_t value;
-                        ret = sd_bus_message_read(reply, "t", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read uint64: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (t) %llu\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "n"))
-                    {
-                        int16_t value;
-                        ret = sd_bus_message_read(reply, "n", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read int16: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (n) %d\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "q"))
-                    {
-                        uint16_t value;
-                        ret = sd_bus_message_read(reply, "q", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read uint16: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (q) %d\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "y"))
-                    {
-                        uint8_t value;
-                        ret = sd_bus_message_read(reply, "y", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read uint8: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (y) %d\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "s"))
-                    {
-                        const char *value;
-                        ret = sd_bus_message_read(reply, "s", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read string: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (s) %s\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "o"))
-                    {
-                        const char *value;
-                        ret = sd_bus_message_read(reply, "o", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read object: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (o) %s\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "b"))
-                    {
-                        int value;
-                        ret = sd_bus_message_read(reply, "b", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read boolean: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (b) %s\n", path, interface, property, value ? "true" : "false");
-                    }
-                    else if (streq(contents, "i"))
-                    {
-                        int32_t value;
-                        ret = sd_bus_message_read(reply, "i", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read int32: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (i) %d\n", path, interface, property, value);
-                    }
-                    else if (streq(contents, "u"))
-                    {
-                        uint32_t value;
-                        ret = sd_bus_message_read(reply, "u", &value);
-                        if (ret < 0)
-                        {
-                            fprintf(stderr, "Failed to read uint32: %s\n", strerror(-ret));
-                            goto finish;
-                        }
-                        fprintf(stdout, "%s.%s.%s = (u) %u\n", path, interface, property, value);
-                    }
-
-                    ret = sd_bus_message_exit_container(reply);
-                    if (ret < 0)
-                    {
-                        fprintf(stderr, "Failed to exit container: %s\n", strerror(-ret));
-                        goto finish;
-                    }
-                }
-                else
-                {
-                    ret = sd_bus_message_skip(reply, "v");
-                    if (ret < 0)
-                    {
-                        fprintf(stderr, "Failed to skip variant: %s\n", strerror(-ret));
-                        goto finish;
-                    }
-
-                    fprintf(stdout, "%s.%s.%s = (%s) <?>\n", path, interface, property, contents);
-                }
-
-                ret = sd_bus_message_exit_container(reply);
-                if (ret < 0)
-                {
-                    fprintf(stderr, "Failed to exit container: %s\n", strerror(-ret));
+                    fprintf(stderr, "Failed to skip interface entry\n");
                     goto finish;
                 }
             }
@@ -260,14 +421,7 @@ int main()
             ret = sd_bus_message_exit_container(reply);
             if (ret < 0)
             {
-                fprintf(stderr, "Failed to exit container: %s\n", strerror(-ret));
-                goto finish;
-            }
-
-            ret = sd_bus_message_exit_container(reply);
-            if (ret < 0)
-            {
-                fprintf(stderr, "Failed to exit container: %s\n", strerror(-ret));
+                fprintf(stderr, "Failed to exit interface entry\n");
                 goto finish;
             }
         }
@@ -275,14 +429,14 @@ int main()
         ret = sd_bus_message_exit_container(reply);
         if (ret < 0)
         {
-            fprintf(stderr, "Failed to exit container: %s\n", strerror(-ret));
+            fprintf(stderr, "Failed to exit interfaces array\n");
             goto finish;
         }
 
         ret = sd_bus_message_exit_container(reply);
         if (ret < 0)
         {
-            fprintf(stderr, "Failed to exit container: %s\n", strerror(-ret));
+            fprintf(stderr, "Failed to exit object dict entry\n");
             goto finish;
         }
     }
@@ -290,13 +444,49 @@ int main()
     ret = sd_bus_message_exit_container(reply);
     if (ret < 0)
     {
-        fprintf(stderr, "Failed to exit array container: %s\n", strerror(-ret));
+        fprintf(stderr, "Failed to exit objects array\n");
         goto finish;
     }
+
+    fprintf(stdout, "powered|bool|%s\n", adapter_info.powered ? "true" : "false");
+    fprintf(stdout, "discovering|bool|%s\n", adapter_info.discovering ? "true" : "false");
+    fprintf(stdout, "connected|bool|%s\n", device_info.connected ? "true" : "false");
+    fprintf(stdout, "mac|string|%s\n", device_info.mac);
+    fprintf(stdout, "name|string|%s\n", device_info.name);
+    fprintf(stdout, "icon|string|%s\n", device_info.icon);
+    fprintf(stdout, "\n");
 
 finish:
     sd_bus_error_free(&error);
     sd_bus_message_unref(reply);
+
+    return ret;
+}
+
+int main()
+{
+    struct monitoring_params params;
+    params.adapter_object_path = "/org/bluez/hci0";
+    params.device_mac_address = NULL;
+
+    sd_bus *bus = NULL;
+    int ret = 0;
+
+    ret = sd_bus_open_system(&bus);
+    if (ret < 0)
+    {
+        fprintf(stderr, "Failed to connect to the system bus\n");
+        goto finish;
+    }
+
+    ret = fetch_bluetooth_state(bus, &params);
+
+finish:
+    if (ret < 0)
+    {
+        fprintf(stderr, "Error (%d): %s\n", ret, strerror(-ret));
+    }
+
     sd_bus_unref(bus);
 
     return ret;
