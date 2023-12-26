@@ -2,37 +2,38 @@
 #include <stdio.h>
 #include <string.h>
 #include <systemd/sd-bus.h>
+#include <unistd.h>
 
 #define str_eq(a, b) (strcmp((a), (b)) == 0)
 
-struct monitoring_config
+typedef struct
 {
     const char *adapter_object_path; // D-Bus path of the adapter. Can't be NULL.
     const char *device_mac_address;  // MAC address of the device. If NULL, all devices are monitored.
-};
+} monitoring_config;
 
-struct adapter_info
+typedef struct
 {
     bool powered;
     bool discovering;
-};
+} adapter_info;
 
-struct device_info
+typedef struct
 {
     bool connected;
     const char *address;
     const char *name;
     const char *icon;
     const char *adapter;
-};
+} device_info;
 
-static void init_adapter_info(struct adapter_info *adapter)
+static void init_adapter_info(adapter_info *adapter)
 {
     adapter->powered = false;
     adapter->discovering = false;
 }
 
-static void init_device_info(struct device_info *device)
+static void init_device_info(device_info *device)
 {
     device->connected = false;
     device->address = NULL;
@@ -127,7 +128,7 @@ static int read_string_variant(sd_bus_message *reply, const char **value)
     return 0;
 }
 
-static int parse_adapter_properties(sd_bus_message *reply, struct adapter_info *output)
+static int parse_adapter_properties(sd_bus_message *reply, adapter_info *output)
 {
     int ret = 0;
 
@@ -205,7 +206,7 @@ static int parse_adapter_properties(sd_bus_message *reply, struct adapter_info *
     return 0;
 }
 
-static int parse_device_properties(sd_bus_message *reply, struct device_info *output)
+static int parse_device_properties(sd_bus_message *reply, device_info *output)
 {
     int ret = 0;
 
@@ -310,7 +311,7 @@ static int parse_device_properties(sd_bus_message *reply, struct device_info *ou
     return 0;
 }
 
-static bool is_desired_device(const struct monitoring_config *config, const struct device_info *device)
+static bool is_desired_device(const monitoring_config *config, const device_info *device)
 {
     if (config->device_mac_address == NULL)
     {
@@ -323,20 +324,20 @@ static bool is_desired_device(const struct monitoring_config *config, const stru
     return str_eq(device->address, config->device_mac_address) && str_eq(device->adapter, config->adapter_object_path);
 }
 
-static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
+static int fetch_bluetooth_state(sd_bus *bus, const monitoring_config *config)
 {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message *reply = NULL;
 
     int ret = 0;
 
-    struct adapter_info adapter_info;
-    bool adapter_found = false;
-    init_adapter_info(&adapter_info);
+    bool has_found_adapter = false;
+    adapter_info found_adapter;
+    init_adapter_info(&found_adapter);
 
-    struct device_info device_info;
-    bool device_found = false;
-    init_device_info(&device_info);
+    bool has_found_device = false;
+    device_info found_device;
+    init_device_info(&found_device);
 
     ret = sd_bus_call_method(bus, "org.bluez", "/",
                              "org.freedesktop.DBus.ObjectManager",
@@ -403,9 +404,9 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
                 goto finish;
             }
 
-            if (!adapter_found && str_eq(interface, "org.bluez.Adapter1") && str_eq(path, config->adapter_object_path))
+            if (!has_found_adapter && str_eq(interface, "org.bluez.Adapter1") && str_eq(path, config->adapter_object_path))
             {
-                struct adapter_info adapter;
+                adapter_info adapter;
                 init_adapter_info(&adapter);
                 ret = parse_adapter_properties(reply, &adapter);
                 if (ret < 0)
@@ -413,12 +414,12 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
                     fprintf(stderr, "Failed to parse adapter properties\n");
                     goto finish;
                 }
-                adapter_info = adapter;
-                adapter_found = true;
+                found_adapter = adapter;
+                has_found_adapter = true;
             }
-            else if (!device_found && str_eq(interface, "org.bluez.Device1"))
+            else if (!has_found_device && str_eq(interface, "org.bluez.Device1"))
             {
-                struct device_info device;
+                device_info device;
                 init_device_info(&device);
                 ret = parse_device_properties(reply, &device);
                 if (ret < 0)
@@ -428,8 +429,8 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
                 }
                 if (is_desired_device(config, &device))
                 {
-                    device_info = device;
-                    device_found = true;
+                    found_device = device;
+                    has_found_device = true;
                 }
             }
             else
@@ -472,12 +473,12 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
         goto finish;
     }
 
-    fprintf(stdout, "powered|bool|%s\n", adapter_info.powered ? "true" : "false");
-    fprintf(stdout, "discovering|bool|%s\n", adapter_info.discovering ? "true" : "false");
-    fprintf(stdout, "connected|bool|%s\n", device_info.connected ? "true" : "false");
-    fprintf(stdout, "address|string|%s\n", device_info.address == NULL ? "" : device_info.address);
-    fprintf(stdout, "name|string|%s\n", device_info.name == NULL ? "" : device_info.name);
-    fprintf(stdout, "icon|string|%s\n", device_info.icon == NULL ? "" : device_info.icon);
+    fprintf(stdout, "powered|bool|%s\n", found_adapter.powered ? "true" : "false");
+    fprintf(stdout, "discovering|bool|%s\n", found_adapter.discovering ? "true" : "false");
+    fprintf(stdout, "connected|bool|%s\n", found_device.connected ? "true" : "false");
+    fprintf(stdout, "address|string|%s\n", found_device.address == NULL ? "" : found_device.address);
+    fprintf(stdout, "name|string|%s\n", found_device.name == NULL ? "" : found_device.name);
+    fprintf(stdout, "icon|string|%s\n", found_device.icon == NULL ? "" : found_device.icon);
     fprintf(stdout, "\n");
     fflush(stdout);
 
@@ -568,7 +569,7 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
 
     if (refresh)
     {
-        ret = fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+        ret = fetch_bluetooth_state(bus, (monitoring_config *)config);
         if (ret < 0)
         {
             fprintf(stderr, "Failed to fetch bluetooth state\n");
@@ -665,7 +666,7 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
 
     if (refresh)
     {
-        ret = fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+        ret = fetch_bluetooth_state(bus, (monitoring_config *)config);
         if (ret < 0)
         {
             fprintf(stderr, "Failed to fetch bluetooth state\n");
@@ -684,7 +685,7 @@ finish:
 
 int main()
 {
-    struct monitoring_config config;
+    monitoring_config config;
     config.adapter_object_path = "/org/bluez/hci0";
     config.device_mac_address = NULL;
 
