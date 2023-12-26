@@ -313,15 +313,17 @@ static int parse_device_properties(sd_bus_message *reply, device_info *output)
 
 static bool is_desired_device(const monitoring_config *config, const device_info *device)
 {
-    if (config->device_mac_address == NULL)
-    {
-        return device->connected;
-    }
-    if (device->address == NULL || device->adapter == NULL)
+    if (device->adapter == NULL || !str_eq(device->adapter, config->adapter_object_path))
     {
         return false;
     }
-    return str_eq(device->address, config->device_mac_address) && str_eq(device->adapter, config->adapter_object_path);
+
+    if (config->device_mac_address != NULL)
+    {
+        return device->address != NULL && str_eq(device->address, config->device_mac_address);
+    }
+
+    return device->connected;
 }
 
 static int fetch_bluetooth_state(sd_bus *bus, const monitoring_config *config)
