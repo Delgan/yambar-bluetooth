@@ -1,6 +1,6 @@
 # yambar-bluetooth
 
-*A Bluetooth module for [Yambar](https://codeberg.org/dnkl/yambar) status pannel.*
+*A Bluetooth module for [Yambar](https://codeberg.org/dnkl/yambar) status panel.*
 
 
 ## Installation
