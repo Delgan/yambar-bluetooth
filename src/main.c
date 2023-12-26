@@ -5,7 +5,7 @@
 
 #define str_eq(a, b) (strcmp((a), (b)) == 0)
 
-struct monitoring_params
+struct monitoring_config
 {
     const char *adapter_object_path; // D-Bus path of the adapter. Can't be NULL.
     const char *device_mac_address;  // MAC address of the device. If NULL, all devices are monitored.
@@ -299,7 +299,7 @@ int parse_device_properties(sd_bus *bus, sd_bus_message *reply, struct device_in
     return 0;
 }
 
-int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_params *params)
+int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
 {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message *reply = NULL;
@@ -379,7 +379,7 @@ int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_params *params)
                 goto finish;
             }
 
-            if (!adapter_found && str_eq(interface, "org.bluez.Adapter1") && str_eq(path, params->adapter_object_path))
+            if (!adapter_found && str_eq(interface, "org.bluez.Adapter1") && str_eq(path, config->adapter_object_path))
             {
                 struct adapter_info adapter;
                 init_adapter_info(&adapter);
@@ -402,7 +402,8 @@ int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_params *params)
                     fprintf(stderr, "Failed to parse device properties\n");
                     goto finish;
                 }
-                if ((params->device_mac_address == NULL && device.connected) || (params->device_mac_address != NULL && str_eq(device.mac, params->device_mac_address)))
+                if ((config->device_mac_address == NULL && device.connected) ||
+                    (config->device_mac_address != NULL && str_eq(device.mac, config->device_mac_address)))
                 {
                     device_info = device;
                     device_found = true;
@@ -465,9 +466,9 @@ finish:
 
 int main()
 {
-    struct monitoring_params params;
-    params.adapter_object_path = "/org/bluez/hci0";
-    params.device_mac_address = NULL;
+    struct monitoring_config config;
+    config.adapter_object_path = "/org/bluez/hci0";
+    config.device_mac_address = NULL;
 
     sd_bus *bus = NULL;
     int ret = 0;
@@ -479,7 +480,7 @@ int main()
         goto finish;
     }
 
-    ret = fetch_bluetooth_state(bus, &params);
+    ret = fetch_bluetooth_state(bus, &config);
 
 finish:
     if (ret < 0)
