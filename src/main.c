@@ -683,12 +683,8 @@ finish:
     return ret;
 }
 
-int main()
+static int run_bluetooth_monitoring(const monitoring_config *config)
 {
-    monitoring_config config;
-    config.adapter_object_path = "/org/bluez/hci0";
-    config.device_mac_address = NULL;
-
     sd_bus *bus = NULL;
     int ret = 0;
 
@@ -699,7 +695,7 @@ int main()
         goto finish;
     }
 
-    ret = fetch_bluetooth_state(bus, &config);
+    ret = fetch_bluetooth_state(bus, config);
     if (ret < 0)
     {
         fprintf(stderr, "Failed to fetch bluetooth state\n");
@@ -710,7 +706,7 @@ int main()
                            NULL,
                            "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',arg0namespace='org.bluez.Device1'",
                            on_device_properties_changed,
-                           &config);
+                           (void *)config);
     if (ret < 0)
     {
         fprintf(stderr, "Failed to add match for device properties changed\n");
@@ -721,7 +717,7 @@ int main()
                            NULL,
                            "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',arg0namespace='org.bluez.Adapter1'",
                            on_adapter_properties_changed,
-                           &config);
+                           (void *)config);
     if (ret < 0)
     {
         fprintf(stderr, "Failed to add match for adapter properties changed\n");
@@ -757,4 +753,13 @@ finish:
     sd_bus_unref(bus);
 
     return ret;
+}
+
+int main()
+{
+    monitoring_config config;
+    config.adapter_object_path = "/org/bluez/hci0";
+    config.device_mac_address = NULL;
+
+    return run_bluetooth_monitoring(&config);
 }
