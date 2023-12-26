@@ -20,7 +20,7 @@ struct adapter_info
 struct device_info
 {
     bool connected;
-    const char *mac;
+    const char *address;
     const char *name;
     const char *icon;
     const char *adapter;
@@ -35,7 +35,7 @@ static void init_adapter_info(struct adapter_info *adapter)
 static void init_device_info(struct device_info *device)
 {
     device->connected = false;
-    device->mac = NULL;
+    device->address = NULL;
     device->name = NULL;
     device->icon = NULL;
     device->adapter = NULL;
@@ -266,7 +266,7 @@ static int parse_device_properties(sd_bus_message *reply, struct device_info *ou
         }
         else if (str_eq(property, "Address"))
         {
-            ret = read_string_variant(reply, &output->mac);
+            ret = read_string_variant(reply, &output->address);
             if (ret < 0)
             {
                 fprintf(stderr, "Failed to read value of 'Address' property\n");
@@ -316,11 +316,11 @@ static bool is_desired_device(const struct monitoring_config *config, const stru
     {
         return device->connected;
     }
-    if (device->mac == NULL || device->adapter == NULL)
+    if (device->address == NULL || device->adapter == NULL)
     {
         return false;
     }
-    return str_eq(device->mac, config->device_mac_address) && str_eq(device->adapter, config->adapter_object_path);
+    return str_eq(device->address, config->device_mac_address) && str_eq(device->adapter, config->adapter_object_path);
 }
 
 static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
@@ -475,7 +475,7 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
     fprintf(stdout, "powered|bool|%s\n", adapter_info.powered ? "true" : "false");
     fprintf(stdout, "discovering|bool|%s\n", adapter_info.discovering ? "true" : "false");
     fprintf(stdout, "connected|bool|%s\n", device_info.connected ? "true" : "false");
-    fprintf(stdout, "mac|string|%s\n", device_info.mac == NULL ? "" : device_info.mac);
+    fprintf(stdout, "address|string|%s\n", device_info.address == NULL ? "" : device_info.address);
     fprintf(stdout, "name|string|%s\n", device_info.name == NULL ? "" : device_info.name);
     fprintf(stdout, "icon|string|%s\n", device_info.icon == NULL ? "" : device_info.icon);
     fprintf(stdout, "\n");
