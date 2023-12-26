@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.12)
 
 project(yambar_bluetooth C)
 
@@ -9,3 +9,5 @@ add_executable(yambar_bluetooth src/main.c)
 
 target_include_directories(yambar_bluetooth PRIVATE ${SD_BUS_INCLUDE_DIRS})
 target_link_libraries(yambar_bluetooth PRIVATE ${SD_BUS_LIBRARIES})
+
+install(TARGETS yambar_bluetooth)
