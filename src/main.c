@@ -478,19 +478,19 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
     if (ret < 0)
     {
         fprintf(stderr, "Failed to read interface name\n");
-        return ret;
+        goto finish;
     }
 
     if (!str_eq(interface, "org.bluez.Device1"))
     {
-        return 0;
+        goto finish;
     }
 
     ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
     if (ret < 0)
     {
         fprintf(stderr, "Failed to enter properties changed array\n");
-        return ret;
+        goto finish;
     }
 
     bool refresh = false;
@@ -501,7 +501,7 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
         if (ret < 0)
         {
             fprintf(stderr, "Failed to enter dict entry of device properties changed\n");
-            return ret;
+            goto finish;
         }
         if (ret == 0)
         {
@@ -513,7 +513,7 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
         if (ret < 0)
         {
             fprintf(stderr, "Failed to read device property name\n");
-            return ret;
+            goto finish;
         }
 
         fprintf(stderr, "Property changed: %s\n", property);
@@ -527,14 +527,14 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
         if (ret < 0)
         {
             fprintf(stderr, "Failed to skip variant\n");
-            return ret;
+            goto finish;
         }
 
         ret = sd_bus_message_exit_container(reply);
         if (ret < 0)
         {
             fprintf(stderr, "Failed to exit dict entry of device property\n");
-            return ret;
+            goto finish;
         }
     }
 
@@ -542,15 +542,26 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
     if (ret < 0)
     {
         fprintf(stderr, "Failed to exit properties changed array\n");
-        return ret;
+        goto finish;
     }
 
-    if (!refresh)
+    if (refresh)
     {
-        return 0;
+        ret = fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to fetch bluetooth state\n");
+            goto finish;
+        }
     }
 
-    return fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+finish:
+    if (ret < 0)
+    {
+        fprintf(stderr, "Error (%d): %s\n", ret, strerror(-ret));
+    }
+
+    return ret;
 }
 
 static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd_bus_error *ret_error)
@@ -566,19 +577,19 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
     if (ret < 0)
     {
         fprintf(stderr, "Failed to read interface name\n");
-        return ret;
+        goto finish;
     }
 
     if (!str_eq(interface, "org.bluez.Adapter1"))
     {
-        return 0;
+        goto finish;
     }
 
     ret = sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}");
     if (ret < 0)
     {
         fprintf(stderr, "Failed to enter properties changed array\n");
-        return ret;
+        goto finish;
     }
 
     bool refresh = false;
@@ -589,7 +600,7 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
         if (ret < 0)
         {
             fprintf(stderr, "Failed to enter dict entry of device properties changed\n");
-            return ret;
+            goto finish;
         }
         if (ret == 0)
         {
@@ -601,7 +612,7 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
         if (ret < 0)
         {
             fprintf(stderr, "Failed to read device property name\n");
-            return ret;
+            goto finish;
         }
 
         fprintf(stderr, "Property changed: %s\n", property);
@@ -615,14 +626,14 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
         if (ret < 0)
         {
             fprintf(stderr, "Failed to skip variant\n");
-            return ret;
+            goto finish;
         }
 
         ret = sd_bus_message_exit_container(reply);
         if (ret < 0)
         {
             fprintf(stderr, "Failed to exit dict entry of device property\n");
-            return ret;
+            goto finish;
         }
     }
 
@@ -630,15 +641,26 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
     if (ret < 0)
     {
         fprintf(stderr, "Failed to exit properties changed array\n");
-        return ret;
+        goto finish;
     }
 
-    if (!refresh)
+    if (refresh)
     {
-        return 0;
+        ret = fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+        if (ret < 0)
+        {
+            fprintf(stderr, "Failed to fetch bluetooth state\n");
+            goto finish;
+        }
     }
 
-    return fetch_bluetooth_state(bus, (struct monitoring_config *)config);
+finish:
+    if (ret < 0)
+    {
+        fprintf(stderr, "Error (%d): %s\n", ret, strerror(-ret));
+    }
+
+    return ret;
 }
 
 int main()
