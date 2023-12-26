@@ -23,6 +23,7 @@ struct device_info
     const char *mac;
     const char *name;
     const char *icon;
+    const char *adapter;
 };
 
 static void init_adapter_info(struct adapter_info *adapter)
@@ -34,9 +35,10 @@ static void init_adapter_info(struct adapter_info *adapter)
 static void init_device_info(struct device_info *device)
 {
     device->connected = false;
-    device->mac = "";
-    device->name = "";
-    device->icon = "";
+    device->mac = NULL;
+    device->name = NULL;
+    device->icon = NULL;
+    device->adapter = NULL;
 }
 
 static int read_boolean_variant(sd_bus_message *reply, bool *value)
@@ -271,6 +273,15 @@ static int parse_device_properties(sd_bus_message *reply, struct device_info *ou
                 return ret;
             }
         }
+        else if (str_eq(property, "Adapter"))
+        {
+            ret = read_object_path_variant(reply, &output->adapter);
+            if (ret < 0)
+            {
+                fprintf(stderr, "Failed to read value of 'Adapter' property\n");
+                return ret;
+            }
+        }
         else
         {
             ret = sd_bus_message_skip(reply, "v");
@@ -297,6 +308,19 @@ static int parse_device_properties(sd_bus_message *reply, struct device_info *ou
     }
 
     return 0;
+}
+
+static bool is_desired_device(const struct monitoring_config *config, const struct device_info *device)
+{
+    if (config->device_mac_address == NULL)
+    {
+        return device->connected;
+    }
+    if (device->mac == NULL || device->adapter == NULL)
+    {
+        return false;
+    }
+    return str_eq(device->mac, config->device_mac_address) && str_eq(device->adapter, config->adapter_object_path);
 }
 
 static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *config)
@@ -402,8 +426,7 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
                     fprintf(stderr, "Failed to parse device properties\n");
                     goto finish;
                 }
-                if ((config->device_mac_address == NULL && device.connected) ||
-                    (config->device_mac_address != NULL && str_eq(device.mac, config->device_mac_address)))
+                if (is_desired_device(config, &device))
                 {
                     device_info = device;
                     device_found = true;
@@ -452,9 +475,9 @@ static int fetch_bluetooth_state(sd_bus *bus, const struct monitoring_config *co
     fprintf(stdout, "powered|bool|%s\n", adapter_info.powered ? "true" : "false");
     fprintf(stdout, "discovering|bool|%s\n", adapter_info.discovering ? "true" : "false");
     fprintf(stdout, "connected|bool|%s\n", device_info.connected ? "true" : "false");
-    fprintf(stdout, "mac|string|%s\n", device_info.mac);
-    fprintf(stdout, "name|string|%s\n", device_info.name);
-    fprintf(stdout, "icon|string|%s\n", device_info.icon);
+    fprintf(stdout, "mac|string|%s\n", device_info.mac == NULL ? "" : device_info.mac);
+    fprintf(stdout, "name|string|%s\n", device_info.name == NULL ? "" : device_info.name);
+    fprintf(stdout, "icon|string|%s\n", device_info.icon == NULL ? "" : device_info.icon);
     fprintf(stdout, "\n");
     fflush(stdout);
 
@@ -515,8 +538,6 @@ static int on_device_properties_changed(sd_bus_message *reply, void *config, sd_
             fprintf(stderr, "Failed to read device property name\n");
             goto finish;
         }
-
-        fprintf(stderr, "Property changed: %s\n", property);
 
         if (str_eq(property, "Connected"))
         {
@@ -614,8 +635,6 @@ static int on_adapter_properties_changed(sd_bus_message *reply, void *config, sd
             fprintf(stderr, "Failed to read device property name\n");
             goto finish;
         }
-
-        fprintf(stderr, "Property changed: %s\n", property);
 
         if (str_eq(property, "Powered") || str_eq(property, "Discovering"))
         {
