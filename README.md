@@ -22,7 +22,7 @@ sudo make install
 
 ## Usage
 
-The `yambar_bluetooth` program will observe connections to a Bluetooth adapter. 
+The `yambar-bluetooth` program will observe connections to a Bluetooth adapter. 
 
 It produces the following tags that can be used by Yambar:
 
@@ -38,7 +38,7 @@ It produces the following tags that can be used by Yambar:
 
 ## Configuration
 
-The `yambar_bluetooth` command accepts two optional arguments:
+The `yambar-bluetooth` command accepts two optional arguments:
 
 | Option                       | Type   | Description                                                                                                           |
 | ---------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
@@ -46,7 +46,7 @@ The `yambar_bluetooth` command accepts two optional arguments:
 | `--device-address <address>` | string | The MAC address of a specific device to observe. By default, the first device found to be connected will be observed. |
 
 
-See also `yambar_bluetooth --help`.
+See also `yambar-bluetooth --help`.
 
 ## Example
 
@@ -60,7 +60,7 @@ bar:
 
   left:
     - script:
-        path: /usr/bin/yambar_bluetooth
+        path: /usr/bin/yambar-bluetooth
         content:
           map:
             conditions:
