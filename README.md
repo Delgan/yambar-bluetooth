@@ -22,28 +22,28 @@ sudo make install
 
 ## Usage
 
-The `yambar_bluetooth` program will monitor connections to a Bluetooth adapter. 
+The `yambar_bluetooth` program will observe connections to a Bluetooth adapter. 
 
 It produces the following tags that can be used by Yambar:
 
-| Name        | Type   | Description                                                       |
-| ----------- | ------ | ----------------------------------------------------------------- |
-| powered     | bool   | Whether the adapter is powered on                                 |
-| discovering | bool   | Whether the adapter is in discovering mode                        |
-| connected   | bool   | Whether the monitored device is connected                         |
-| address     | string | The MAC address of the monitored device (empty if none was found) |
-| name        | string | The name of the monitored device (empty if none was found)        |
-| icon        | string | The icon of the monitored device (empty if none was found)        |
+| Name        | Type   | Description                                                      |
+| ----------- | ------ | ---------------------------------------------------------------- |
+| powered     | bool   | Whether the adapter is powered on                                |
+| discovering | bool   | Whether the adapter is in discovering mode                       |
+| connected   | bool   | Whether the observed device is connected                         |
+| address     | string | The MAC address of the observed device (empty if none was found) |
+| name        | string | The name of the observed device (empty if none was found)        |
+| icon        | string | The icon of the observed device (empty if none was found)        |
 
 
 ## Configuration
 
 The `yambar_bluetooth` command accepts two optional arguments:
 
-| Option                       | Type   | Description                                                                                                            |
-| ---------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `--adapter-name <name>`      | string | The name of the Bluetooth adapter that will be monitored. By default, `"hci0"` is used.                                |
-| `--device-address <address>` | string | The MAC address of a specific device to monitor. By default, the first device found to be connected will be monitored. |
+| Option                       | Type   | Description                                                                                                           |
+| ---------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
+| `--adapter-name <name>`      | string | The name of the Bluetooth adapter that will be observed. By default, `"hci0"` is used.                                |
+| `--device-address <address>` | string | The MAC address of a specific device to observe. By default, the first device found to be connected will be observed. |
 
 
 See also `yambar_bluetooth --help`.
