@@ -344,6 +344,8 @@ static int fetch_bluetooth_state(sd_bus *bus, const monitoring_config *config)
     device_info found_device;
     init_device_info(&found_device);
 
+    int connected_count = 0;
+
     ret = sd_bus_call_method(bus, "org.bluez", "/",
                              "org.freedesktop.DBus.ObjectManager",
                              "GetManagedObjects", &error, &reply, NULL);
@@ -422,7 +424,7 @@ static int fetch_bluetooth_state(sd_bus *bus, const monitoring_config *config)
                 found_adapter = adapter;
                 has_found_adapter = true;
             }
-            else if (!has_found_device && str_eq(interface, "org.bluez.Device1"))
+            else if (str_eq(interface, "org.bluez.Device1"))
             {
                 device_info device;
                 init_device_info(&device);
@@ -432,10 +434,15 @@ static int fetch_bluetooth_state(sd_bus *bus, const monitoring_config *config)
                     fprintf(stderr, "Failed to parse device properties\n");
                     goto finish;
                 }
-                if (is_desired_device(config, &device))
+
+                if (!has_found_device && is_desired_device(config, &device))
                 {
                     found_device = device;
                     has_found_device = true;
+                }
+                if (device.connected)
+                {
+                    connected_count++;
                 }
             }
             else
@@ -481,6 +488,7 @@ static int fetch_bluetooth_state(sd_bus *bus, const monitoring_config *config)
     fprintf(stdout, "powered|bool|%s\n", found_adapter.powered ? "true" : "false");
     fprintf(stdout, "discovering|bool|%s\n", found_adapter.discovering ? "true" : "false");
     fprintf(stdout, "connected|bool|%s\n", found_device.connected ? "true" : "false");
+    fprintf(stdout, "count|int|%d\n", connected_count);
     fprintf(stdout, "address|string|%s\n", found_device.address == NULL ? "" : found_device.address);
     fprintf(stdout, "name|string|%s\n", found_device.name == NULL ? "" : found_device.name);
     fprintf(stdout, "icon|string|%s\n", found_device.icon == NULL ? "" : found_device.icon);

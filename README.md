@@ -31,6 +31,7 @@ It produces the following tags that can be used by Yambar:
 | powered     | bool   | Whether the adapter is powered on                                |
 | discovering | bool   | Whether the adapter is in discovering mode                       |
 | connected   | bool   | Whether the observed device is connected                         |
+| count       | int    | Total number of connected devices (including the observed one)   |
 | address     | string | The MAC address of the observed device (empty if none was found) |
 | name        | string | The name of the observed device (empty if none was found)        |
 | icon        | string | The icon of the observed device (empty if none was found)        |
