@@ -10,7 +10,7 @@ First build the software:
 ```bash
 mkdir build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local ..
 make
 ```
 
@@ -61,7 +61,7 @@ bar:
 
   left:
     - script:
-        path: /usr/bin/yambar-bluetooth
+        path: /usr/local/bin/yambar-bluetooth
         content:
           map:
             conditions:
