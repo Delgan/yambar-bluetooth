@@ -4,11 +4,7 @@ project(yambar-bluetooth C)
 
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(SD_BUS QUIET libsystemd)
-
-if(NOT SD_BUS_FOUND)
-    pkg_check_modules(SD_BUS REQUIRED libelogind)
-endif()
+pkg_search_module(SD_BUS REQUIRED libsystemd libelogind)
 
 add_executable(yambar-bluetooth src/main.c)
 
